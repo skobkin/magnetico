@@ -60,3 +60,7 @@
 [[constraint]]
   name = "github.com/libp2p/go-sockaddr"
   version = "1.0.3"
+
+[[constraint]]
+  name = "github.com/lib/pq"
+  version = "1.0.0"
