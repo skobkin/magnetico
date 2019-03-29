@@ -59,7 +59,8 @@ const (
 type databaseEngine uint8
 
 const (
-	Sqlite3 databaseEngine = 1
+	Sqlite3  databaseEngine = 1
+	Postgres databaseEngine = 2
 	Stdout
 )
 
@@ -117,7 +118,7 @@ func MakeDatabase(rawURL string, logger *zap.Logger) (Database, error) {
 		return makeStdoutDatabase(url_)
 
 	case "postgresql":
-		return nil, fmt.Errorf("postgresql is not yet supported")
+		return makePostgresDatabase(url_)
 
 	case "mysql":
 		return nil, fmt.Errorf("mysql is not yet supported")
