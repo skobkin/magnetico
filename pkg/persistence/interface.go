@@ -117,7 +117,7 @@ func MakeDatabase(rawURL string, logger *zap.Logger) (Database, error) {
 	case "stdout":
 		return makeStdoutDatabase(url_)
 
-	case "postgresql":
+	case "postgres":
 		return makePostgresDatabase(url_)
 
 	case "mysql":
