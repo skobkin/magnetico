@@ -113,7 +113,7 @@ func MakeDatabase(rawURL string, logger *zap.Logger) (Database, error) {
 	case "sqlite3":
 		return makeSqlite3Database(url_)
 
-	case "postgresql":
+	case "postgres":
 		return makePostgresDatabase(url_)
 
 	case "mysql":

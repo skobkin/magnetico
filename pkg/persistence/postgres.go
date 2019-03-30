@@ -24,7 +24,6 @@ func makePostgresDatabase(url_ *url.URL) (Database, error) {
 	db := new(postgresDatabase)
 
 	var err error
-	url_.Scheme = ""
 	db.conn, err = sql.Open("postgres", url_.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "sql.Open")
@@ -241,7 +240,7 @@ func (db *postgresDatabase) GetTorrent(infoHash []byte) (*TorrentMetadata, error
 		WHERE info_hash = ?`,
 		infoHash,
 	)
-	defer closeRows(rows)
+	defer db.closeRows(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +261,7 @@ func (db *postgresDatabase) GetFiles(infoHash []byte) ([]File, error) {
 	rows, err := db.conn.Query(
 		"SELECT size, path FROM files, torrents WHERE files.torrent_id = torrents.id AND torrents.info_hash = ?;",
 		infoHash)
-	defer closeRows(rows)
+	defer db.closeRows(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -294,11 +293,14 @@ func (db *postgresDatabase) setupDatabase() error {
 	// is nice.
 	defer tx.Rollback()
 
-	// Initial Setup for `user_version` 0:
+	// Initial Setup for schema version 0:
 	// FROZEN.
-	// TODO: "torrent_id" column of the "files" table can be NULL, how can we fix this in a new
-	//       version schema?
 	_, err = tx.Exec(`
+		-- Torrents ID sequence generator
+		CREATE SEQUENCE IF NOT EXISTS seq_torrents_id;
+		-- Files ID sequence generator
+		CREATE SEQUENCE IF NOT EXISTS seq_files_id;
+
 		CREATE TABLE IF NOT EXISTS torrents (
 			id             INTEGER PRIMARY KEY DEFAULT nextval('seq_torrents_id'),
 			info_hash      bytea NOT NULL UNIQUE,
@@ -306,150 +308,53 @@ func (db *postgresDatabase) setupDatabase() error {
 			total_size     INTEGER NOT NULL CHECK(total_size > 0),
 			discovered_on  INTEGER NOT NULL CHECK(discovered_on > 0)
 		);
+
 		CREATE TABLE IF NOT EXISTS files (
 			id          INTEGER PRIMARY KEY DEFAULT nextval('seq_files_id'),
 			torrent_id  INTEGER REFERENCES torrents ON DELETE CASCADE ON UPDATE RESTRICT,
 			size        INTEGER NOT NULL,
 			path        TEXT NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS migrations (
+		    schema_version		SMALLINT NOT NULL UNIQUE 
+		);
+
+		INSERT INTO migrations (schema_version) VALUES (0) ON CONFLICT DO NOTHING;
 	`)
 	if err != nil {
 		return errors.Wrap(err, "sql.Tx.Exec (v0)")
 	}
 
-	// TODO rewrite to migration table
-	// Get the user_version:
-	rows, err := tx.Query("PRAGMA user_version;")
+	// Get current schema version
+	rows, err := tx.Query("SELECT MAX(schema_version) FROM migrations;")
 	if err != nil {
-		return errors.Wrap(err, "sql.Tx.Query (user_version)")
+		return errors.Wrap(err, "sql.Tx.Query (SELECT MAX(version) FROM migrations)")
 	}
-	defer rows.Close()
-	var userVersion int
-	if rows.Next() != true {
-		return fmt.Errorf("sql.Rows.Next (user_version): PRAGMA user_version did not return any rows!")
-	}
-	if err = rows.Scan(&userVersion); err != nil {
-		return errors.Wrap(err, "sql.Rows.Scan (user_version)")
-	}
+	defer db.closeRows(rows)
 
-	switch userVersion {
+	var schemaVersion int
+	if rows.Next() != true {
+		return fmt.Errorf("sql.Rows.Next (SELECT MAX(version) FROM migrations): Query did not return any rows!")
+	}
+	if err = rows.Scan(&schemaVersion); err != nil {
+		return errors.Wrap(err, "sql.Rows.Scan (MAX(version))")
+	}
+	// If next line is removed we're getting error on sql.Tx.Commit: unexpected command tag SELECT
+	// https://stackoverflow.com/questions/36295883/golang-postgres-commit-unknown-command-error/36866993#36866993
+	db.closeRows(rows)
+
+	switch schemaVersion {
 	case 0: // FROZEN.
 		// Upgrade from user_version 0 to 1
 		// Changes:
 		//   * `info_hash_index` is recreated as UNIQUE.
-		zap.L().Warn("Updating database schema from 0 to 1... (this might take a while)")
-		_, err = tx.Exec(`
-			DROP INDEX IF EXISTS info_hash_index;
-			CREATE UNIQUE INDEX info_hash_index ON torrents	(info_hash);
-			--PRAGMA user_version = 1;
-		`)
+		zap.L().Warn("Updating (fake) database schema from 0 to 1...")
+		_, err = tx.Exec(`INSERT INTO migrations (schema_version) VALUES (1);`)
 		if err != nil {
 			return errors.Wrap(err, "sql.Tx.Exec (v0 -> v1)")
 		}
-		fallthrough
-
-	case 1: // FROZEN.
-		// Upgrade from user_version 1 to 2
-		// Changes:
-		//   * Added `n_seeders`, `n_leechers`, and `updated_on` columns to the `torrents` table, and
-		//     the constraints they entail.
-		//   * Added `is_readme` and `content` columns to the `files` table, and the constraints & the
-		//     the indices they entail.
-		//     * Added unique index `readme_index`  on `files` table.
-		zap.L().Warn("Updating database schema from 1 to 2... (this might take a while)")
-		// We introduce two new columns in `files`: content BLOB, and is_readme INTEGER which we
-		// treat as a bool (NULL for false, and 1 for true; see the CHECK statement).
-		// The reason for the change is that as we introduce the new "readme" feature which
-		// downloads a readme file as a torrent descriptor, we needed to store it somewhere in the
-		// database with the following conditions:
-		//
-		//   1. There can be one and only one readme (content) for a given torrent; hence the
-		//      UNIQUE INDEX on (torrent_id, is_description) (remember that SQLite treats each NULL
-		//      value as distinct [UNIQUE], see https://sqlite.org/nulls.html).
-		//   2. We would like to keep the readme (content) associated with the file it came from;
-		//      hence we modify the files table instead of the torrents table.
-		//
-		// Regarding the implementation details, following constraints arise:
-		//
-		//   1. The column is_readme is either NULL or 1, and if it is 1, then column content cannot
-		//      be NULL (but might be an empty BLOB). Vice versa, if column content of a row is,
-		//      NULL then column is_readme must be NULL.
-		//
-		//      This is to prevent unused content fields filling up the database, and to catch
-		//      programmers' errors.
-		_, err = tx.Exec(`
-			ALTER TABLE torrents ADD COLUMN updated_on INTEGER CHECK (updated_on > 0) DEFAULT NULL;
-			ALTER TABLE torrents ADD COLUMN n_seeders  INTEGER CHECK ((updated_on IS NOT NULL AND n_seeders >= 0) OR (updated_on IS NULL AND n_seeders IS NULL)) DEFAULT NULL;
-			ALTER TABLE torrents ADD COLUMN n_leechers INTEGER CHECK ((updated_on IS NOT NULL AND n_leechers >= 0) OR (updated_on IS NULL AND n_leechers IS NULL)) DEFAULT NULL;
-
-			ALTER TABLE files ADD COLUMN is_readme INTEGER CHECK (is_readme IS NULL OR is_readme=1) DEFAULT NULL;
-			ALTER TABLE files ADD COLUMN content   TEXT    CHECK ((content IS NULL AND is_readme IS NULL) OR (content IS NOT NULL AND is_readme=1)) DEFAULT NULL;
-			CREATE UNIQUE INDEX readme_index ON files (torrent_id, is_readme);
-
-			PRAGMA user_version = 2;
-		`)
-		if err != nil {
-			return errors.Wrap(err, "sql.Tx.Exec (v1 -> v2)")
-		}
-		fallthrough
-
-	case 2: // NOT FROZEN! (subject to change or complete removal)
-		// Upgrade from user_version 2 to 3
-		// Changes:
-		//   * Created `torrents_idx` FTS5 virtual table.
-		//
-		//     See:
-		//     * https://sqlite.org/fts5.html
-		//     * https://sqlite.org/fts3.html
-		//
-		//   * Added `modified_on` column to the `torrents` table.
-		zap.L().Warn("Updating database schema from 2 to 3... (this might take a while)")
-		_, err = tx.Exec(`
-			CREATE VIRTUAL TABLE torrents_idx USING fts5(name, content='torrents', content_rowid='id', tokenize="porter unicode61 separators ' !""#$%&''()*+,-./:;<=>?@[\]^_` + "`" + `{|}~'");
-			
-			-- Populate the index
-			INSERT INTO torrents_idx(rowid, name) SELECT id, name FROM torrents;
-
-			-- Triggers to keep the FTS index up to date.
-			CREATE TRIGGER torrents_idx_ai_t AFTER INSERT ON torrents BEGIN
-			  INSERT INTO torrents_idx(rowid, name) VALUES (new.id, new.name);
-			END;
-			CREATE TRIGGER torrents_idx_ad_t AFTER DELETE ON torrents BEGIN
-			  INSERT INTO torrents_idx(torrents_idx, rowid, name) VALUES('delete', old.id, old.name);
-			END;
-			CREATE TRIGGER torrents_idx_au_t AFTER UPDATE ON torrents BEGIN
-			  INSERT INTO torrents_idx(torrents_idx, rowid, name) VALUES('delete', old.id, old.name);
-			  INSERT INTO torrents_idx(rowid, name) VALUES (new.id, new.name);
-			END;
-
-            -- Add column 'modified_on'
-			-- BEWARE: code needs to be updated before January 1, 3000 (32503680000)!
-			ALTER TABLE torrents ADD COLUMN modified_on INTEGER NOT NULL
-				CHECK (modified_on >= discovered_on AND (updated_on IS NOT NULL OR modified_on >= updated_on))
-				DEFAULT 32503680000
-			;
-
-			-- If 'modified_on' is not explicitly supplied, then it shall be set, by default, to
-			-- 'discovered_on' right after the row is inserted to 'torrents'.
-            --
-			-- {WHEN expr} does NOT work for some reason (trigger doesn't get triggered), so we use
-            --   AND NEW."modified_on" = 32503680000
-            -- instead in the WHERE clause.
-			CREATE TRIGGER "torrents_modified_on_default_t" AFTER INSERT ON "torrents" BEGIN
-	          UPDATE "torrents" SET "modified_on" = NEW."discovered_on" WHERE "id" = NEW."id" AND NEW."modified_on" = 32503680000;
-            END;
-
-			-- Set 'modified_on' value of all rows to 'discovered_on' or 'updated_on', whichever is
-            -- greater; beware that 'updated_on' can be NULL too.			
-			UPDATE torrents SET modified_on = (SELECT MAX(discovered_on, IFNULL(updated_on, 0)));
-
-			CREATE INDEX modified_on_index ON torrents (modified_on);
-
-			PRAGMA user_version = 3;
-		`)
-		if err != nil {
-			return errors.Wrap(err, "sql.Tx.Exec (v2 -> v3)")
-		}
+		//fallthrough
 	}
 
 	if err = tx.Commit(); err != nil {
