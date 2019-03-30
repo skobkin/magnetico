@@ -459,7 +459,7 @@ func (db *postgresDatabase) setupDatabase() error {
 	return nil
 }
 
-func executeTemplate(text string, data interface{}, funcs template.FuncMap) string {
+func (db *postgresDatabase) executeTemplate(text string, data interface{}, funcs template.FuncMap) string {
 	t := template.Must(template.New("anon").Funcs(funcs).Parse(text))
 
 	var buf bytes.Buffer
@@ -470,7 +470,7 @@ func executeTemplate(text string, data interface{}, funcs template.FuncMap) stri
 	return buf.String()
 }
 
-func closeRows(rows *sql.Rows) {
+func (db *postgresDatabase) closeRows(rows *sql.Rows) {
 	if err := rows.Close(); err != nil {
 		zap.L().Error("could not close row", zap.Error(err))
 	}
