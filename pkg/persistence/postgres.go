@@ -69,7 +69,7 @@ func (db *postgresDatabase) Engine() databaseEngine {
 }
 
 func (db *postgresDatabase) DoesTorrentExist(infoHash []byte) (bool, error) {
-	rows, err := db.conn.Query("SELECT 1 FROM torrents WHERE info_hash = ?;", infoHash)
+	rows, err := db.conn.Query("SELECT 1 FROM torrents WHERE info_hash = $1;", infoHash)
 	if err != nil {
 		return false, err
 	}
@@ -128,7 +128,7 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 			name,
 			total_size,
 			discovered_on
-		) VALUES (?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4)
 		RETURNING id;
 	`, infoHash, name, totalSize, time.Now().Unix()).Scan(&lastInsertId)
 	if err != nil {
@@ -136,7 +136,7 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 	}
 
 	for _, file := range files {
-		_, err = tx.Exec("INSERT INTO files (torrent_id, size, path) VALUES (?, ?, ?);",
+		_, err = tx.Exec("INSERT INTO files (torrent_id, size, path) VALUES ($1, $2, $3);",
 			lastInsertId, file.Size, file.Path,
 		)
 		if err != nil {
@@ -213,7 +213,7 @@ func (db *postgresDatabase) GetTorrent(infoHash []byte) (*TorrentMetadata, error
 			discovered_on,
 			(SELECT COUNT(*) FROM files WHERE torrent_id = torrents.id) AS n_files
 		FROM torrents
-		WHERE info_hash = ?`,
+		WHERE info_hash = $1;`,
 		infoHash,
 	)
 	defer db.closeRows(rows)
@@ -235,7 +235,7 @@ func (db *postgresDatabase) GetTorrent(infoHash []byte) (*TorrentMetadata, error
 
 func (db *postgresDatabase) GetFiles(infoHash []byte) ([]File, error) {
 	rows, err := db.conn.Query(
-		"SELECT size, path FROM files, torrents WHERE files.torrent_id = torrents.id AND torrents.info_hash = ?;",
+		"SELECT size, path FROM files, torrents WHERE files.torrent_id = torrents.id AND torrents.info_hash = $1;",
 		infoHash)
 	defer db.closeRows(rows)
 	if err != nil {
