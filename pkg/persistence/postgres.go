@@ -115,31 +115,7 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 	// exists there, add it to the sink.
 	//
 	// Do NOT try to be clever and attempt to use INSERT OR IGNORE INTO or INSERT OR REPLACE INTO
-	// without understanding their consequences fully:
-	//
-	// https://www.sqlite.org/lang_conflict.html
-	//
-	//   INSERT OR IGNORE INTO
-	//     INSERT OR IGNORE INTO will ignore:
-	//       1. CHECK constraint violations
-	//       2. UNIQUE or PRIMARY KEY constraint violations
-	//       3. NOT NULL constraint violations
-	//
-	//     You would NOT want to ignore #1 and #2 as they are likely to indicate programmer errors.
-	//     Instead of silently ignoring them, let the program err and investigate the causes.
-	//
-	//   INSERT OR REPLACE INTO
-	//     INSERT OR REPLACE INTO will replace on:
-	//       1. UNIQUE or PRIMARY KEY constraint violations (by "deleting pre-existing rows that are
-	//          causing the constraint violation prior to inserting or updating the current row")
-	//
-	//     INSERT OR REPLACE INTO will abort on:
-	//       2. CHECK constraint violations
-	//       3. NOT NULL constraint violations (if "the column has no default value")
-	//
-	//     INSERT OR REPLACE INTO is definitely much closer to what you may want, but deleting
-	//     pre-existing rows means that you might cause users loose data (such as seeder and leecher
-	//     information, readme, and so on) at the expense of /your/ own laziness...
+	// without understanding their consequences fully
 	if exist, err := db.DoesTorrentExist(infoHash); exist || err != nil {
 		return err
 	}
