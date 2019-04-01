@@ -13,9 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Close your rows lest you get "database table is locked" error(s)!
-// See https://github.com/mattn/go-sqlite3/issues/2741
-
 type postgresDatabase struct {
 	conn *sql.DB
 }
@@ -36,23 +33,7 @@ func makePostgresDatabase(url_ *url.URL) (Database, error) {
 		return nil, errors.Wrap(err, "sql.DB.Ping")
 	}
 
-	// > After some time we receive "unable to open database file" error while trying to execute a transaction using
-	// > Tx.Exec().
-	// -- boramalper
-	//
-	// > Not sure if this would be contributing to your issue, but one of the problems we've observed in the past is the
-	// > standard library's attempt to pool connections. (This makes more sense for database connections that are actual
-	// > network connections, as opposed to SQLite.)
-	// > Basically, the problem we encountered was that most pragmas (except specifically PRAGMA journal_mode=WAL, as
-	// > per the documentation) apply to the connection, so if the standard library is opening/closing connections
-	// > behind your back for pooling purposes, it can lead to unintended behavior.
-	// -- rittneje
-	//
 	// https://github.com/mattn/go-sqlite3/issues/618
-	//
-	// Our solution is to set the connection max lifetime to infinity (reuse connection forever), and max open
-	// connections to 3 (1 causes deadlocks, unlimited is too lax!). Max idle conns are set to 3 to persist connections
-	// (instead of opening the database again and again).
 	db.conn.SetConnMaxLifetime(0) // https://golang.org/pkg/database/sql/#DB.SetConnMaxLifetime
 	db.conn.SetMaxOpenConns(3)
 	db.conn.SetMaxIdleConns(3)
@@ -75,8 +56,6 @@ func (db *postgresDatabase) DoesTorrentExist(infoHash []byte) (bool, error) {
 	}
 	defer rows.Close()
 
-	// If rows.Next() returns true, meaning that the torrent is in the database, return true; else
-	// return false.
 	exists := rows.Next()
 	if rows.Err() != nil {
 		return false, err
@@ -107,15 +86,6 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 		return nil
 	}
 
-	// Although we check whether the torrent exists in the database before asking MetadataSink to
-	// fetch its metadata, the torrent can also exists in the Sink before that:
-	//
-	// If the torrent is complete (i.e. its metadata) and if its waiting in the channel to be
-	// received, a race condition arises when we query the database and seeing that it doesn't
-	// exists there, add it to the sink.
-	//
-	// Do NOT try to be clever and attempt to use INSERT OR IGNORE INTO or INSERT OR REPLACE INTO
-	// without understanding their consequences fully
 	if exist, err := db.DoesTorrentExist(infoHash); exist || err != nil {
 		return err
 	}
@@ -263,10 +233,7 @@ func (db *postgresDatabase) setupDatabase() error {
 	if err != nil {
 		return errors.Wrap(err, "sql.DB.Begin")
 	}
-	// If everything goes as planned and no error occurs, we will commit the transaction before
-	// returning from the function so the tx.Rollback() call will fail, trying to rollback a
-	// committed transaction. BUT, if an error occurs, we'll get our transaction rollback'ed, which
-	// is nice.
+
 	defer tx.Rollback()
 
 	// Initial Setup for schema version 0:
@@ -322,9 +289,6 @@ func (db *postgresDatabase) setupDatabase() error {
 
 	switch schemaVersion {
 	case 0: // FROZEN.
-		// Upgrade from user_version 0 to 1
-		// Changes:
-		//   * `info_hash_index` is recreated as UNIQUE.
 		zap.L().Warn("Updating (fake) database schema from 0 to 1...")
 		_, err = tx.Exec(`INSERT INTO migrations (schema_version) VALUES (1);`)
 		if err != nil {
