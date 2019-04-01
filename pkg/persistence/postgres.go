@@ -281,14 +281,14 @@ func (db *postgresDatabase) setupDatabase() error {
 			id             INTEGER PRIMARY KEY DEFAULT nextval('seq_torrents_id'),
 			info_hash      bytea NOT NULL UNIQUE,
 			name           TEXT NOT NULL,
-			total_size     INTEGER NOT NULL CHECK(total_size > 0),
+			total_size     BIGINT NOT NULL CHECK(total_size > 0),
 			discovered_on  INTEGER NOT NULL CHECK(discovered_on > 0)
 		);
 
 		CREATE TABLE IF NOT EXISTS files (
 			id          INTEGER PRIMARY KEY DEFAULT nextval('seq_files_id'),
 			torrent_id  INTEGER REFERENCES torrents ON DELETE CASCADE ON UPDATE RESTRICT,
-			size        INTEGER NOT NULL,
+			size        BIGINT NOT NULL,
 			path        TEXT NOT NULL
 		);
 
