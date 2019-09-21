@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"text/template"
 	"time"
+	"unicode/utf8"
 
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -65,6 +66,16 @@ func (db *postgresDatabase) DoesTorrentExist(infoHash []byte) (bool, error) {
 }
 
 func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []File) error {
+	if !utf8.ValidString(name) {
+		zap.L().Warn(
+			"Ignoring a torrent whose name is not UTF-8 compliant.",
+			zap.ByteString("infoHash", infoHash),
+			zap.Binary("name", []byte(name)),
+		)
+
+		return nil
+	}
+
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return errors.Wrap(err, "conn.Begin")
