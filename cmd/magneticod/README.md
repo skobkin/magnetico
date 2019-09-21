@@ -36,7 +36,11 @@ the repository `boramalper/magnetico`. Images are tagged as `d-vMAJOR.MINOR.PATC
 ## Usage
 ### Database
 **magneticod** is designed to be able to use different database engines to store its data, but
-currently only SQLite 3 is supported. The database file can be found in:
+currently only SQLite 3 and PostgreSQL 9+ are supported.
+
+#### SQLite
+
+The database file can be found in:
 
 - **On Linux**
 
@@ -44,6 +48,14 @@ currently only SQLite 3 is supported. The database file can be found in:
 
 **magneticod** uses write-ahead logging (WAL) for its database, so there might be multiple
 files while it is operating, but ``database.sqlite3`` is *the database*.
+
+#### PostgreSQL
+
+**Database URL example**
+
+```shell script
+./magneticod --indexer-addr=0.0.0.0:64879 --database=postgres://username:password@localhost/database_name?sslmode=disable
+```
 
 ### Using the Docker Image
 You need to mount

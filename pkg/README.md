@@ -2,9 +2,14 @@
 [![GoDoc](https://godoc.org/github.com/boramalper/magnetico?status.svg)](https://godoc.org/github.com/boramalper/magnetico)
 
 - The most significant package is `persistence`, that abstracts access to the
-  magnetico databases with different engines (currently, only SQLite).
+  magnetico databases with different engines (currently, SQLite, stdout and partly PostgreSQL).
   
 **For REST-ful magneticow API, see [https://app.swaggerhub.com/apis/boramalper/magneticow-api/](https://app.swaggerhub.com/apis/boramalper/magneticow-api/).**
+
+## PostgreSQL database engine (only `magneticod` part implemented)
+
+PostgreSQL database engine uses [PostgreSQL](https://www.postgresql.org/) to store indexed
+torrents. It's more performant and flexible than SQLite but requires additional software configuration.
 
 ## Stdout Dummy Database Engine for magneticod
 
