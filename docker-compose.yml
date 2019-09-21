@@ -1,20 +1,29 @@
 version: "2"
 
-volumes:
-  shared_db:
-
 services:
   magneticod:
     build:
-      context: magneticod
+      image: boramalper/magneticod
+#      context: .
+#      dockerfile: Dockerfile.magneticod
     volumes:
-      - shared_db:/root/.local/share
+      - magneticod-data:/root/.local/share/magneticod
+      - magneticod-config:/root/.config/magneticod
 
   magneticow:
     build:
-      context: magneticow
+      image: boramalper/magneticow
+#      context: .
+#      dockerfile: Dockerfile.magneticow
     volumes:
-      - shared_db:/root/.local/share
-
+      - magneticod-data:/root/.local/share/magneticod
+    depends_on:
+      # It doesn't necessarily "depend" on magneticod, but you would probably like to start them at the same time.
+      - magneticod
     ports:
-      - "12345:8080"
+      - "8080:8080"
+
+volumes:
+  magneticod-config:
+
+  magneticod-data:

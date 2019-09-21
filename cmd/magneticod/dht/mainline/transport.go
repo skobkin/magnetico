@@ -94,12 +94,12 @@ func (t *Transport) readMessages() {
 			zap.L().Warn("READ CONGESTION!", zap.Error(err))
 			t.onCongestion()
 		} else if err != nil {
-			// TODO: isn't there a more reliable way to detect if UDPConn is closed?
-			zap.L().Warn("Could NOT read an UDP packet!", zap.Error(err))
+			// Socket is probably closed
+			break
 		}
 
 		if n == 0 {
-			/*   Datagram sockets in various domains  (e.g., the UNIX and Internet domains) permit
+			/* Datagram sockets in various domains  (e.g., the UNIX and Internet domains) permit
 			 * zero-length datagrams. When such a datagram is received, the return value (n) is 0.
 			 */
 			continue
@@ -151,7 +151,9 @@ func (t *Transport) WriteMessages(msg *Message, addr *net.UDPAddr) {
 		 * Source: https://docs.python.org/3/library/asyncio-protocol.html#flow-control-callbacks
 		 */
 		zap.L().Warn("WRITE CONGESTION!", zap.Error(err))
-		t.onCongestion()
+		if t.onCongestion != nil {
+			t.onCongestion()
+		}
 	} else if err != nil {
 		zap.L().Warn("Could NOT write an UDP packet!", zap.Error(err))
 	}

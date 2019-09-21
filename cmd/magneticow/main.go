@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
 	"html/template"
 	"io"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/Wessie/appdirs"
 	"github.com/dustin/go-humanize"
@@ -28,8 +29,6 @@ import (
 
 	"github.com/boramalper/magnetico/pkg/persistence"
 )
-
-const N_TORRENTS = 20
 
 var compiledOn string
 
@@ -62,8 +61,8 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	zap.L().Info("magneticow v0.7.2 has been started.")
-	zap.L().Info("Copyright (C) 2018  Mert Bora ALPER <bora@boramalper.org>.")
+	zap.L().Info("magneticow v0.9.0 has been started.")
+	zap.L().Info("Copyright (C) 2017-2019  Mert Bora ALPER <bora@boramalper.org>.")
 	zap.L().Info("Dedicated to Cemile Binay, in whose hands I thrived.")
 	zap.S().Infof("Compiled on %s", compiledOn)
 
@@ -106,14 +105,16 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/",
 		BasicAuth(rootHandler, "magneticow"))
-	router.HandleFunc("/api/v0.1/files/{infohash:[a-f0-9]{40}}",
-		BasicAuth(apiFilesInfohashHandler, "magneticow"))
+
 	router.HandleFunc("/api/v0.1/statistics",
-		BasicAuth(apiStatisticsHandler, "magneticow"))
+		BasicAuth(apiStatistics, "magneticow"))
 	router.HandleFunc("/api/v0.1/torrents",
-		BasicAuth(apiTorrentsHandler, "magneticow"))
+		BasicAuth(apiTorrents, "magneticow"))
 	router.HandleFunc("/api/v0.1/torrents/{infohash:[a-f0-9]{40}}",
-		BasicAuth(apiTorrentsInfohashHandler, "magneticow"))
+		BasicAuth(apiTorrent, "magneticow"))
+	router.HandleFunc("/api/v0.1/torrents/{infohash:[a-f0-9]{40}}/filelist",
+		BasicAuth(apiFilelist, "magneticow"))
+
 	router.HandleFunc("/feed",
 		BasicAuth(feedHandler, "magneticow"))
 	router.PathPrefix("/static").HandlerFunc(
@@ -169,7 +170,6 @@ func main() {
 	templates = make(map[string]*template.Template)
 	templates["feed"] = template.Must(template.New("feed").Funcs(templateFunctions).Parse(string(mustAsset("templates/feed.xml"))))
 	templates["homepage"] = template.Must(template.New("homepage").Funcs(templateFunctions).Parse(string(mustAsset("templates/homepage.html"))))
-	templates["torrent"] = template.Must(template.New("torrent").Funcs(templateFunctions).Parse(string(mustAsset("templates/torrent.html"))))
 
 	var err error
 	database, err = persistence.MakeDatabase(opts.Database, logger)
@@ -288,7 +288,7 @@ func loadCred(cred string) error {
 		 */
 		re := regexp.MustCompile(`^[a-z](?:_?[a-z0-9])*:\$2[aby]?\$\d{1,2}\$[./A-Za-z0-9]{53}$`)
 		if !re.Match(line) {
-			return fmt.Errorf("on line %d: format should be: <USERNAME>:<BCRYPT HASH>", lineno)
+			return fmt.Errorf("on line %d: format should be: <USERNAME>:<BCRYPT HASH>, instead got: %s", lineno, line)
 		}
 
 		tokens := bytes.Split(line, []byte(":"))

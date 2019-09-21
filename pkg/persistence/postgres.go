@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"text/template"
 	"time"
+	"unicode/utf8"
 
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -65,6 +66,16 @@ func (db *postgresDatabase) DoesTorrentExist(infoHash []byte) (bool, error) {
 }
 
 func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []File) error {
+	if !utf8.ValidString(name) {
+		zap.L().Warn(
+			"Ignoring a torrent whose name is not UTF-8 compliant.",
+			zap.ByteString("infoHash", infoHash),
+			zap.Binary("name", []byte(name)),
+		)
+
+		return nil
+	}
+
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return errors.Wrap(err, "conn.Begin")
@@ -137,7 +148,7 @@ func (db *postgresDatabase) GetNumberOfTorrents() (uint, error) {
 	defer rows.Close()
 
 	if rows.Next() != true {
-		return 0, fmt.Errorf("No rows returned from `SELECT reltuples::BIGINT AS estimate_count`")
+		return 0, fmt.Errorf("no rows returned from `SELECT reltuples::BIGINT AS estimate_count`")
 	}
 
 	// Returns int64: https://godoc.org/github.com/lib/pq#hdr-Data_Types
@@ -278,7 +289,7 @@ func (db *postgresDatabase) setupDatabase() error {
 
 	var schemaVersion int
 	if rows.Next() != true {
-		return fmt.Errorf("sql.Rows.Next (SELECT MAX(version) FROM migrations): Query did not return any rows!")
+		return fmt.Errorf("sql.Rows.Next (SELECT MAX(version) FROM migrations): Query did not return any rows")
 	}
 	if err = rows.Scan(&schemaVersion); err != nil {
 		return errors.Wrap(err, "sql.Rows.Scan (MAX(version))")

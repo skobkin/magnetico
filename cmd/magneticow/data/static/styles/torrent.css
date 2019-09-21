@@ -10,6 +10,12 @@ header {
     margin-bottom: 0.833em;
 }
 
+@media only screen and (max-device-width: 800px) {
+    header {
+        flex-direction: column;
+    }
+}
+
 header div a {
     text-decoration: none;
     color: inherit;
@@ -31,7 +37,8 @@ header > div {
 }
 
 #title h2 {
-    margin-bottom: 0px;
+    margin-bottom: 0;
+    word-break: break-all;
 }
 
 #title {
@@ -41,12 +48,6 @@ header > div {
 #title a {
     text-decoration: none;
     color: inherit;
-}
-
-pre {
-    background-color: black;
-    color: white;
-    overflow: auto;
 }
 
 table {
@@ -71,4 +72,9 @@ th {
     text-align: left;
 
     width: 1%;
+}
+
+tt {
+    font-style: italic;
+    font-size: smaller;
 }

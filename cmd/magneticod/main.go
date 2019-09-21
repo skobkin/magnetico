@@ -5,30 +5,30 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime/pprof"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/pkg/profile"
 
 	"github.com/jessevdk/go-flags"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/boramalper/magnetico/pkg/util"
+	"github.com/Wessie/appdirs"
 
 	"github.com/boramalper/magnetico/cmd/magneticod/bittorrent/metadata"
 	"github.com/boramalper/magnetico/cmd/magneticod/dht"
 
-	"github.com/Wessie/appdirs"
-
 	"github.com/boramalper/magnetico/pkg/persistence"
+	"github.com/boramalper/magnetico/pkg/util"
 )
 
 type opFlags struct {
 	DatabaseURL string
 
-	TrawlerMlAddrs    []string
-	TrawlerMlInterval time.Duration
+	IndexerAddrs        []string
+	IndexerInterval     time.Duration
+	IndexerMaxNeighbors uint
 
 	LeechMaxN int
 
@@ -46,11 +46,7 @@ func main() {
 		zapcore.Lock(os.Stderr),
 		loggerLevel,
 	))
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			panic(err)
-		}
-	}()
+	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
 	// opFlags is the "operational flags"
@@ -60,8 +56,8 @@ func main() {
 		return
 	}
 
-	zap.L().Info("magneticod v0.7.2 has been started.")
-	zap.L().Info("Copyright (C) 2018  Mert Bora ALPER <bora@boramalper.org>.")
+	zap.L().Info("magneticod v0.9.0 has been started.")
+	zap.L().Info("Copyright (C) 2017-2019  Mert Bora ALPER <bora@boramalper.org>.")
 	zap.L().Info("Dedicated to Cemile Binay, in whose hands I thrived.")
 	zap.S().Infof("Compiled on %s", compiledOn)
 
@@ -79,30 +75,14 @@ func main() {
 
 	switch opFlags.Profile {
 	case "cpu":
-		file, err := os.OpenFile("magneticod_cpu.prof", os.O_CREATE|os.O_WRONLY, 0755)
-		if err != nil {
-			zap.L().Panic("Could not open the cpu profile file!", zap.Error(err))
-		}
-		if err = pprof.StartCPUProfile(file); err != nil {
-			zap.L().Fatal("Could not start CPU profiling!", zap.Error(err))
-		}
-		defer func() {
-			if err = file.Sync(); err != nil {
-				zap.L().Fatal("Could not sync profiling file!", zap.Error(err))
-			}
-		}()
-		defer func() {
-			if err = file.Close(); err != nil {
-				zap.L().Fatal("Could not close profiling file!", zap.Error(err))
-			}
-		}()
-		defer pprof.StopCPUProfile()
-
+		defer profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
 	case "memory":
-		zap.L().Panic("NOT IMPLEMENTED")
-
-	case "trace":
-		zap.L().Panic("NOT IMPLEMENTED")
+		defer profile.Start(
+			profile.MemProfile,
+			profile.ProfilePath("."),
+			profile.NoShutdownHook,
+			profile.MemProfileRate(1),
+		).Stop()
 	}
 
 	// Initialise the random number generator
@@ -117,10 +97,8 @@ func main() {
 		logger.Sugar().Fatalf("Could not open the database at `%s`", opFlags.DatabaseURL, zap.Error(err))
 	}
 
-	trawlingManager := dht.NewTrawlingManager(opFlags.TrawlerMlAddrs, opFlags.TrawlerMlInterval)
-	metadataSink := metadata.NewSink(2*time.Minute, opFlags.LeechMaxN)
-
-	zap.L().Debug("Peer ID", zap.ByteString("peerID", metadataSink.PeerID))
+	trawlingManager := dht.NewManager(opFlags.IndexerAddrs, opFlags.IndexerInterval, opFlags.IndexerMaxNeighbors)
+	metadataSink := metadata.NewSink(5*time.Second, opFlags.LeechMaxN)
 
 	// The Event Loop
 	for stopped := false; !stopped; {
@@ -158,13 +136,14 @@ func parseFlags() (*opFlags, error) {
 	var cmdF struct {
 		DatabaseURL string `long:"database" description:"URL of the database."`
 
-		TrawlerMlAddrs    []string `long:"trawler-ml-addr" description:"Address(es) to be used by trawling DHT (Mainline) nodes." default:"0.0.0.0:0"`
-		TrawlerMlInterval uint     `long:"trawler-ml-interval" description:"Trawling interval in integer seconds."`
+		IndexerAddrs        []string `long:"indexer-addr" description:"Address(es) to be used by indexing DHT nodes." default:"0.0.0.0:0"`
+		IndexerInterval     uint     `long:"indexer-interval" description:"Indexing interval in integer seconds." default:"1"`
+		IndexerMaxNeighbors uint     `long:"indexer-max-neighbors" description:"Maximum number of neighbors of an indexer." default:"10000"`
 
-		LeechMaxN uint `long:"leech-max-n" description:"Maximum number of leeches." default:"1000"`
+		LeechMaxN uint `long:"leech-max-n" description:"Maximum number of leeches." default:"200"`
 
 		Verbose []bool `short:"v" long:"verbose" description:"Increases verbosity."`
-		Profile string `long:"profile" description:"Enable profiling." choice:"cpu" choice:"memory" choice:"trace"`
+		Profile string `long:"profile" description:"Enable profiling." choice:"cpu" choice:"memory"`
 	}
 
 	opF := new(opFlags)
@@ -187,17 +166,14 @@ func parseFlags() (*opFlags, error) {
 		opF.DatabaseURL = cmdF.DatabaseURL
 	}
 
-	if err = checkAddrs(cmdF.TrawlerMlAddrs); err != nil {
+	if err = checkAddrs(cmdF.IndexerAddrs); err != nil {
 		zap.S().Fatalf("Of argument (list) `trawler-ml-addr`", zap.Error(err))
 	} else {
-		opF.TrawlerMlAddrs = cmdF.TrawlerMlAddrs
+		opF.IndexerAddrs = cmdF.IndexerAddrs
 	}
 
-	if cmdF.TrawlerMlInterval == 0 {
-		opF.TrawlerMlInterval = 1 * time.Second
-	} else {
-		opF.TrawlerMlInterval = time.Duration(cmdF.TrawlerMlInterval) * time.Second
-	}
+	opF.IndexerInterval = time.Duration(cmdF.IndexerInterval) * time.Second
+	opF.IndexerMaxNeighbors = cmdF.IndexerMaxNeighbors
 
 	opF.LeechMaxN = int(cmdF.LeechMaxN)
 	if opF.LeechMaxN > 1000 {

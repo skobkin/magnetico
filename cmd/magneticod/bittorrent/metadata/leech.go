@@ -184,6 +184,14 @@ func (l *Leech) readMessage() ([]byte, error) {
 
 	rLength := uint(binary.BigEndian.Uint32(rLengthB))
 
+	// Some malicious/faulty peers say that they are sending a very long
+	// message, and hence causing us to run out of memory.
+	// This is a crude check that does not let it happen (i.e. boundary can probably be
+	// tightened a lot more.)
+	if rLength > MAX_METADATA_SIZE {
+		return nil, errors.New("message is longer than max allowed metadata size")
+	}
+
 	rMessage, err := l.readExactly(rLength)
 	if err != nil {
 		return nil, errors.Wrap(err, "readExactly rMessage")
@@ -234,10 +242,11 @@ func (l *Leech) readUmMessage() ([]byte, error) {
 func (l *Leech) connect(deadline time.Time) error {
 	var err error
 
-	l.conn, err = net.DialTCP("tcp4", nil, l.peerAddr)
+	x, err := net.DialTimeout("tcp4", l.peerAddr.String(), 1*time.Second)
 	if err != nil {
 		return errors.Wrap(err, "dial")
 	}
+	l.conn = x.(*net.TCPConn)
 
 	// > If sec == 0, operating system discards any unsent or unacknowledged data [after Close()
 	// > has been called].
@@ -247,22 +256,6 @@ func (l *Leech) connect(deadline time.Time) error {
 			zap.L().Panic("couldn't close leech connection!", zap.Error(err))
 		}
 		return errors.Wrap(err, "SetLinger")
-	}
-
-	err = l.conn.SetKeepAlive(true)
-	if err != nil {
-		if err := l.conn.Close(); err != nil {
-			zap.L().Panic("couldn't close leech connection!", zap.Error(err))
-		}
-		return errors.Wrap(err, "SetKeepAlive")
-	}
-
-	err = l.conn.SetKeepAlivePeriod(10 * time.Second)
-	if err != nil {
-		if err := l.conn.Close(); err != nil {
-			zap.L().Panic("couldn't close leech connection!", zap.Error(err))
-		}
-		return errors.Wrap(err, "SetKeepAlivePeriod")
 	}
 
 	err = l.conn.SetNoDelay(true)

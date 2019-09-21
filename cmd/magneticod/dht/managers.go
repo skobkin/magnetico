@@ -9,56 +9,50 @@ import (
 	"github.com/boramalper/magnetico/cmd/magneticod/dht/mainline"
 )
 
-type TrawlingManager struct {
-	// private
-	output   chan Result
-	services []*mainline.TrawlingService
+type Service interface {
+	Start()
+	Terminate()
 }
 
 type Result interface {
 	InfoHash() [20]byte
-	PeerAddr() *net.TCPAddr
+	PeerAddrs() []net.TCPAddr
 }
 
-func NewTrawlingManager(mlAddrs []string, interval time.Duration) *TrawlingManager {
-	manager := new(TrawlingManager)
+type Manager struct {
+	output           chan Result
+	indexingServices []Service
+}
+
+func NewManager(addrs []string, interval time.Duration, maxNeighbors uint) *Manager {
+	manager := new(Manager)
 	manager.output = make(chan Result, 20)
 
-	if mlAddrs == nil {
-		mlAddrs = []string{"0.0.0.0:0"}
-	}
-	for _, addr := range mlAddrs {
-		manager.services = append(manager.services, mainline.NewTrawlingService(
-			addr,
-			2000,
-			interval,
-			mainline.TrawlingServiceEventHandlers{
-				OnResult: manager.onTrawlingResult,
-			},
-		))
-	}
-
-	for _, service := range manager.services {
+	for _, addr := range addrs {
+		service := mainline.NewIndexingService(addr, interval, maxNeighbors, mainline.IndexingServiceEventHandlers{
+			OnResult: manager.onIndexingResult,
+		})
+		manager.indexingServices = append(manager.indexingServices, service)
 		service.Start()
 	}
 
 	return manager
 }
 
-func (m *TrawlingManager) onTrawlingResult(res mainline.TrawlingResult) {
+func (m *Manager) onIndexingResult(res mainline.IndexingResult) {
 	select {
 	case m.output <- res:
 	default:
-		zap.L().Warn("DHT manager output ch is full, result dropped!")
+		zap.L().Debug("DHT manager output ch is full, idx result dropped!")
 	}
 }
 
-func (m *TrawlingManager) Output() <-chan Result {
+func (m *Manager) Output() <-chan Result {
 	return m.output
 }
 
-func (m *TrawlingManager) Terminate() {
-	for _, service := range m.services {
+func (m *Manager) Terminate() {
+	for _, service := range m.indexingServices {
 		service.Terminate()
 	}
 }
