@@ -17,10 +17,12 @@ Use `beanstalk` URL schema to connect to beanstalkd server. For example:
 magneticod --database=beanstalkd://127.0.0.1:11300/magneticod_tube
 ```
 
-Don't forget to [tweak maximum job size](https://linux.die.net/man/1/beanstalkd) to be able to save torrents with a large number of files:
+Don't forget to [set](https://linux.die.net/man/1/beanstalkd) binlog persistence, change maximum job size
+and `fsync()` period to be able to reliably save torrents with a large number of files:
 
 ```shell
-beanstalkd -z 1048560
+# Example settings (may not work for you)
+beanstalkd -z 1048560 -b /var/lib/beanstalkd -f 2400000
 ```
 
 ## Stdout Dummy Database Engine for magneticod
