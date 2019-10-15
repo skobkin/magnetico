@@ -117,6 +117,16 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 	}
 
 	for _, file := range files {
+		if !utf8.ValidString(file.Path) {
+			zap.L().Warn(
+				"Ignoring a file whose path is not UTF-8 compliant.",
+				zap.Binary("path", []byte(file.Path)),
+			)
+
+			// Returning nil so deferred tx.Rollback() will be called and transaction will be canceled.
+			return nil
+		}
+
 		_, err = tx.Exec("INSERT INTO files (torrent_id, size, path) VALUES ($1, $2, $3);",
 			lastInsertId, file.Size, file.Path,
 		)
