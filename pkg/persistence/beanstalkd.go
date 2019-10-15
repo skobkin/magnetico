@@ -20,7 +20,7 @@ type beanstalkdPayload struct {
 
 var beanstalkdWriteOnlyError = errors.New("This dummy storage engine (\"beanstalkd\") is write-only")
 
-func makeBeanstalkdDatabase(url_ *url.URL) (Database, error) {
+func makeBeanstalkDatabase(url_ *url.URL) (Database, error) {
 	s := new(beanstalkd)
 
 	var err error

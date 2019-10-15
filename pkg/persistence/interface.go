@@ -117,8 +117,8 @@ func MakeDatabase(rawURL string, logger *zap.Logger) (Database, error) {
 	case "stdout":
 		return makeStdoutDatabase(url_)
 
-	case "beanstalkd":
-		return makeBeanstalkdDatabase(url_)
+	case "beanstalk":
+		return makeBeanstalkDatabase(url_)
 
 	case "postgresql":
 		return nil, fmt.Errorf("postgresql is not yet supported")
