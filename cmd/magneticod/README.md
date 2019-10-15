@@ -49,13 +49,9 @@ The database file can be found in:
 **magneticod** uses write-ahead logging (WAL) for its database, so there might be multiple
 files while it is operating, but ``database.sqlite3`` is *the database*.
 
-#### PostgreSQL
+#### More engines (PostgreSQL and others)
 
-**Database URL example**
-
-```shell script
-./magneticod --indexer-addr=0.0.0.0:64879 --database=postgres://username:password@localhost/database_name?sslmode=disable
-```
+You can read about other supported persistence engines [here](pkg/README.md).
 
 ### Using the Docker Image
 You need to mount

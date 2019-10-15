@@ -17,6 +17,12 @@ Engine usage example:
 magneticod --database=postgres://username:password@127.0.0.1/database?port=5432&schema=custom_schema_name&sslmode=disable
 ```
 
+See [lib/pq documentation](https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters)
+for more detailed option list.
+
+Optional parameter `schema` was added to choose which schema will be used to store magnetico tables,
+sequences and indexes.
+
 ## Stdout Dummy Database Engine for magneticod
 
 Stdout dummy database engine for **magneticod** prints a new [JSON Line](http://jsonlines.org/)
