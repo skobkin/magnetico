@@ -10,6 +10,7 @@ require (
 	github.com/gorilla/mux v1.7.2
 	github.com/gorilla/schema v1.1.0
 	github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6 // indirect
+	github.com/iwanbk/gobeanstalk v0.0.0-20160903043409-dbbb23937c31
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/kevinburke/go-bindata v3.13.0+incompatible // indirect
 	github.com/lib/pq v1.2.0
