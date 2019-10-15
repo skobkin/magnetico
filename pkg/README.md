@@ -11,6 +11,12 @@
 PostgreSQL database engine uses [PostgreSQL](https://www.postgresql.org/) to store indexed
 torrents. It's more performant and flexible than SQLite but requires additional software configuration.
 
+Engine usage example:
+
+```shell
+magneticod --database=postgres://username:password@127.0.0.1/database?port=5432&schema=custom_schema_name&sslmode=disable
+```
+
 ## Stdout Dummy Database Engine for magneticod
 
 Stdout dummy database engine for **magneticod** prints a new [JSON Line](http://jsonlines.org/)

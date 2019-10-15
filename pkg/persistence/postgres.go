@@ -15,11 +15,19 @@ import (
 )
 
 type postgresDatabase struct {
-	conn *sql.DB
+	conn   *sql.DB
+	schema string
 }
 
 func makePostgresDatabase(url_ *url.URL) (Database, error) {
 	db := new(postgresDatabase)
+
+	schema := url_.Query().Get("schema")
+	if "" == schema {
+		db.schema = "magneticod"
+	} else {
+		db.schema = schema
+	}
 
 	var err error
 	db.conn, err = sql.Open("postgres", url_.String())
@@ -51,7 +59,7 @@ func (db *postgresDatabase) Engine() databaseEngine {
 }
 
 func (db *postgresDatabase) DoesTorrentExist(infoHash []byte) (bool, error) {
-	rows, err := db.conn.Query("SELECT 1 FROM torrents WHERE info_hash = $1;", infoHash)
+	rows, err := db.conn.Query("SELECT 1 FROM "+db.schema+".torrents WHERE info_hash = $1;", infoHash)
 	if err != nil {
 		return false, err
 	}
@@ -104,7 +112,7 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 	var lastInsertId int64
 
 	err = tx.QueryRow(`
-		INSERT INTO torrents (
+		INSERT INTO `+db.schema+`.torrents (
 			info_hash,
 			name,
 			total_size,
@@ -113,7 +121,7 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 		RETURNING id;
 	`, infoHash, name, totalSize, time.Now().Unix()).Scan(&lastInsertId)
 	if err != nil {
-		return errors.Wrap(err, "tx.QueryRow (INSERT INTO torrents)")
+		return errors.Wrap(err, "tx.QueryRow (INSERT INTO "+db.schema+".torrents)")
 	}
 
 	for _, file := range files {
@@ -127,11 +135,11 @@ func (db *postgresDatabase) AddNewTorrent(infoHash []byte, name string, files []
 			return nil
 		}
 
-		_, err = tx.Exec("INSERT INTO files (torrent_id, size, path) VALUES ($1, $2, $3);",
+		_, err = tx.Exec("INSERT INTO "+db.schema+".files (torrent_id, size, path) VALUES ($1, $2, $3);",
 			lastInsertId, file.Size, file.Path,
 		)
 		if err != nil {
-			return errors.Wrap(err, "tx.Exec (INSERT INTO files)")
+			return errors.Wrap(err, "tx.Exec (INSERT INTO "+db.schema+".files)")
 		}
 	}
 
@@ -151,7 +159,9 @@ func (db *postgresDatabase) GetNumberOfTorrents() (uint, error) {
 	// Using estimated number of rows which can be queries much quicker
 	// https://www.postgresql.org/message-id/568BF820.9060101%40comarch.com
 	// https://wiki.postgresql.org/wiki/Count_estimate
-	rows, err := db.conn.Query("SELECT reltuples::BIGINT AS estimate_count FROM pg_class WHERE relname='torrents';")
+	rows, err := db.conn.Query(
+		"SELECT reltuples::BIGINT AS estimate_count FROM pg_class WHERE relname='" + db.schema + ".torrents';",
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -198,13 +208,13 @@ func (db *postgresDatabase) orderOn(orderBy OrderingCriteria) string {
 func (db *postgresDatabase) GetTorrent(infoHash []byte) (*TorrentMetadata, error) {
 	rows, err := db.conn.Query(`
 		SELECT
-			info_hash,
-			name,
-			total_size,
-			discovered_on,
-			(SELECT COUNT(*) FROM files WHERE torrent_id = torrents.id) AS n_files
-		FROM torrents
-		WHERE info_hash = $1;`,
+			t.info_hash,
+			t.name,
+			t.total_size,
+			t.discovered_on,
+			(SELECT COUNT(*) FROM `+db.schema+`.files f WHERE f.torrent_id = t.id) AS n_files
+		FROM `+db.schema+`.torrents t
+		WHERE t.info_hash = $1;`,
 		infoHash,
 	)
 	defer db.closeRows(rows)
@@ -225,9 +235,13 @@ func (db *postgresDatabase) GetTorrent(infoHash []byte) (*TorrentMetadata, error
 }
 
 func (db *postgresDatabase) GetFiles(infoHash []byte) ([]File, error) {
-	rows, err := db.conn.Query(
-		"SELECT size, path FROM files, torrents WHERE files.torrent_id = torrents.id AND torrents.info_hash = $1;",
-		infoHash)
+	rows, err := db.conn.Query(`
+		SELECT
+       		f.size,
+       		f.path 
+		FROM `+db.schema+`.files f, `+db.schema+`.torrents t WHERE f.torrent_id = t.id AND t.info_hash = $1;`,
+		infoHash,
+	)
 	defer db.closeRows(rows)
 	if err != nil {
 		return nil, err
@@ -260,46 +274,48 @@ func (db *postgresDatabase) setupDatabase() error {
 	// Initial Setup for schema version 0:
 	// FROZEN.
 	_, err = tx.Exec(`
-		-- Torrents ID sequence generator
-		CREATE SEQUENCE IF NOT EXISTS seq_torrents_id;
-		-- Files ID sequence generator
-		CREATE SEQUENCE IF NOT EXISTS seq_files_id;
+		CREATE SCHEMA IF NOT EXISTS ` + db.schema + `;
 
-		CREATE TABLE IF NOT EXISTS torrents (
-			id             INTEGER PRIMARY KEY DEFAULT nextval('seq_torrents_id'),
+		-- Torrents ID sequence generator
+		CREATE SEQUENCE IF NOT EXISTS ` + db.schema + `.seq_torrents_id;
+		-- Files ID sequence generator
+		CREATE SEQUENCE IF NOT EXISTS ` + db.schema + `.seq_files_id;
+
+		CREATE TABLE IF NOT EXISTS ` + db.schema + `.torrents (
+			id             INTEGER PRIMARY KEY DEFAULT nextval('` + db.schema + `.seq_torrents_id'),
 			info_hash      bytea NOT NULL UNIQUE,
 			name           TEXT NOT NULL,
 			total_size     BIGINT NOT NULL CHECK(total_size > 0),
 			discovered_on  INTEGER NOT NULL CHECK(discovered_on > 0)
 		);
 
-		CREATE TABLE IF NOT EXISTS files (
-			id          INTEGER PRIMARY KEY DEFAULT nextval('seq_files_id'),
-			torrent_id  INTEGER REFERENCES torrents ON DELETE CASCADE ON UPDATE RESTRICT,
+		CREATE TABLE IF NOT EXISTS ` + db.schema + `.files (
+			id          INTEGER PRIMARY KEY DEFAULT nextval('` + db.schema + `.seq_files_id'),
+			torrent_id  INTEGER REFERENCES ` + db.schema + `.torrents ON DELETE CASCADE ON UPDATE RESTRICT,
 			size        BIGINT NOT NULL,
 			path        TEXT NOT NULL
 		);
 
-		CREATE TABLE IF NOT EXISTS migrations (
+		CREATE TABLE IF NOT EXISTS ` + db.schema + `.migrations (
 		    schema_version		SMALLINT NOT NULL UNIQUE 
 		);
 
-		INSERT INTO migrations (schema_version) VALUES (0) ON CONFLICT DO NOTHING;
+		INSERT INTO ` + db.schema + `.migrations (schema_version) VALUES (0) ON CONFLICT DO NOTHING;
 	`)
 	if err != nil {
 		return errors.Wrap(err, "sql.Tx.Exec (v0)")
 	}
 
 	// Get current schema version
-	rows, err := tx.Query("SELECT MAX(schema_version) FROM migrations;")
+	rows, err := tx.Query("SELECT MAX(schema_version) FROM " + db.schema + ".migrations;")
 	if err != nil {
-		return errors.Wrap(err, "sql.Tx.Query (SELECT MAX(version) FROM migrations)")
+		return errors.Wrap(err, "sql.Tx.Query (SELECT MAX(version) FROM "+db.schema+".migrations)")
 	}
 	defer db.closeRows(rows)
 
 	var schemaVersion int
 	if rows.Next() != true {
-		return fmt.Errorf("sql.Rows.Next (SELECT MAX(version) FROM migrations): Query did not return any rows")
+		return fmt.Errorf("sql.Rows.Next (SELECT MAX(version) FROM " + db.schema + ".migrations): Query did not return any rows")
 	}
 	if err = rows.Scan(&schemaVersion); err != nil {
 		return errors.Wrap(err, "sql.Rows.Scan (MAX(version))")
@@ -308,15 +324,16 @@ func (db *postgresDatabase) setupDatabase() error {
 	// https://stackoverflow.com/questions/36295883/golang-postgres-commit-unknown-command-error/36866993#36866993
 	db.closeRows(rows)
 
-	switch schemaVersion {
-	case 0: // FROZEN.
-		zap.L().Warn("Updating (fake) database schema from 0 to 1...")
-		_, err = tx.Exec(`INSERT INTO migrations (schema_version) VALUES (1);`)
-		if err != nil {
-			return errors.Wrap(err, "sql.Tx.Exec (v0 -> v1)")
-		}
-		//fallthrough
-	}
+	// Uncomment for future migrations:
+	//switch schemaVersion {
+	//case 0: // FROZEN.
+	//	zap.L().Warn("Updating (fake) database schema from 0 to 1...")
+	//	_, err = tx.Exec(`INSERT INTO ` + db.schema + `.migrations (schema_version) VALUES (1);`)
+	//	if err != nil {
+	//		return errors.Wrap(err, "sql.Tx.Exec (v0 -> v1)")
+	//	}
+	//	//fallthrough
+	//}
 
 	if err = tx.Commit(); err != nil {
 		return errors.Wrap(err, "sql.Tx.Commit")
