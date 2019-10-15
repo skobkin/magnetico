@@ -89,6 +89,12 @@ type TorrentMetadata struct {
 	Relevance    float64 `json:"relevance"`
 }
 
+type SimpleTorrentSummary struct {
+	InfoHash string `json:"infoHash"`
+	Name     string `json:"name"`
+	Files    []File `json:"files"`
+}
+
 func (tm *TorrentMetadata) MarshalJSON() ([]byte, error) {
 	type Alias TorrentMetadata
 	return json.Marshal(&struct {

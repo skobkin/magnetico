@@ -12,12 +12,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type beanstalkdPayload struct {
-	InfoHash string `json:"info_hash"`
-	Name     string `json:"name"`
-	Files    []File `json:"files"`
-}
-
 var beanstalkdWriteOnlyError = errors.New("This dummy storage engine (\"beanstalkd\") is write-only")
 
 func makeBeanstalkDatabase(url_ *url.URL) (Database, error) {
@@ -61,7 +55,7 @@ func (s *beanstalkd) DoesTorrentExist(infoHash []byte) (bool, error) {
 }
 
 func (s *beanstalkd) AddNewTorrent(infoHash []byte, name string, files []File) error {
-	payloadJson, err := json.Marshal(beanstalkdPayload{
+	payloadJson, err := json.Marshal(SimpleTorrentSummary{
 		InfoHash: hex.EncodeToString(infoHash),
 		Name:     name,
 		Files:    files,
