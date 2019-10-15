@@ -25,6 +25,8 @@ and `fsync()` period to be able to reliably save torrents with a large number of
 beanstalkd -z 1048560 -b /var/lib/beanstalkd -f 2400000
 ```
 
+For job data example see `stdout` engine documentation below as `beanstalk` engine uses the same format.
+
 ## Stdout Dummy Database Engine for magneticod
 
 Stdout dummy database engine for **magneticod** prints a new [JSON Line](http://jsonlines.org/)
