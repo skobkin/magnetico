@@ -271,6 +271,23 @@ func (db *postgresDatabase) setupDatabase() error {
 
 	defer tx.Rollback()
 
+	rows, err := db.conn.Query("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm';")
+	if err != nil {
+		return err
+	}
+	defer db.closeRows(rows)
+
+	trgmInstalled := rows.Next()
+	if rows.Err() != nil {
+		return err
+	}
+
+	if !trgmInstalled {
+		return fmt.Errorf(
+			"pg_trgm extension is not enabled. You need to execute 'CREATE EXTENSION pg_trgm' on this database",
+		)
+	}
+
 	// Initial Setup for schema version 0:
 	// FROZEN.
 	_, err = tx.Exec(`
@@ -288,6 +305,10 @@ func (db *postgresDatabase) setupDatabase() error {
 			total_size     BIGINT NOT NULL CHECK(total_size > 0),
 			discovered_on  INTEGER NOT NULL CHECK(discovered_on > 0)
 		);
+
+		-- Using pg_trgm GIN index for fast ILIKE queries
+		-- You need to execute "CREATE EXTENSION pg_trgm" on your database for this index to work
+		CREATE INDEX IF NOT EXISTS idx_torrents_name_gin_trgm ON ` + db.schema + `.torrents USING GIN (name gin_trgm_ops);
 
 		CREATE TABLE IF NOT EXISTS ` + db.schema + `.files (
 			id          INTEGER PRIMARY KEY DEFAULT nextval('` + db.schema + `.seq_files_id'),
@@ -307,7 +328,7 @@ func (db *postgresDatabase) setupDatabase() error {
 	}
 
 	// Get current schema version
-	rows, err := tx.Query("SELECT MAX(schema_version) FROM " + db.schema + ".migrations;")
+	rows, err = tx.Query("SELECT MAX(schema_version) FROM " + db.schema + ".migrations;")
 	if err != nil {
 		return errors.Wrap(err, "sql.Tx.Query (SELECT MAX(version) FROM "+db.schema+".migrations)")
 	}
