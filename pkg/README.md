@@ -6,6 +6,23 @@
   
 **For REST-ful magneticow API, see [https://app.swaggerhub.com/apis/boramalper/magneticow-api/](https://app.swaggerhub.com/apis/boramalper/magneticow-api/).**
 
+## Beanstalk MQ engine for magneticod
+
+[Beanstalkd](https://beanstalkd.github.io/) is very lightweight and simple MQ server implementation.
+You can use it to organize delivery of the indexed data to your application.
+
+Use `beanstalk` URL schema to connect to beanstalkd server. For example:
+
+```shell
+magneticod --database=beanstalkd://127.0.0.1:11300/magneticod_tube
+```
+
+Don't forget to [tweak maximum job size](https://linux.die.net/man/1/beanstalkd) to be able to save torrents with a large number of files:
+
+```shell
+beanstalkd -z 1048560
+```
+
 ## Stdout Dummy Database Engine for magneticod
 
 Stdout dummy database engine for **magneticod** prints a new [JSON Line](http://jsonlines.org/)
