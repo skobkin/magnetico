@@ -11,6 +11,12 @@
 PostgreSQL database engine uses [PostgreSQL](https://www.postgresql.org/) to store indexed
 torrents. It's more performant and flexible than SQLite but requires additional software configuration.
 
+**WARNING:** `pg_trgm` extension required. You need to enable it for your database before starting `magneticod`:
+
+```postgresql
+CREATE EXTENSION pg_trgm;
+```
+
 Engine usage example:
 
 ```shell
