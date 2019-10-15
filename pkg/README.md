@@ -18,7 +18,7 @@ magneticod --database=postgres://username:password@127.0.0.1/database?port=5432&
 ```
 
 See [lib/pq documentation](https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters)
-for more detailed option list.
+for more detailed parameter list.
 
 Optional parameter `schema` was added to choose which schema will be used to store magnetico tables,
 sequences and indexes.
