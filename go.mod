@@ -12,6 +12,7 @@ require (
 	github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6 // indirect
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/kevinburke/go-bindata v3.13.0+incompatible // indirect
+	github.com/lib/pq v1.2.0
 	github.com/libp2p/go-sockaddr v0.0.1
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/pkg/errors v0.8.1
