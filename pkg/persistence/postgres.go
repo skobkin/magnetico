@@ -306,6 +306,10 @@ func (db *postgresDatabase) setupDatabase() error {
 			discovered_on  INTEGER NOT NULL CHECK(discovered_on > 0)
 		);
 
+		-- Indexes for search sorting options
+		CREATE INDEX IF NOT EXISTS idx_torrents_total_size ON ` + db.schema + `.torrents (total_size);
+		CREATE INDEX IF NOT EXISTS idx_torrents_discovered_on ON ` + db.schema + `.torrents (discovered_on);
+
 		-- Using pg_trgm GIN index for fast ILIKE queries
 		-- You need to execute "CREATE EXTENSION pg_trgm" on your database for this index to work
 		CREATE INDEX IF NOT EXISTS idx_torrents_name_gin_trgm ON ` + db.schema + `.torrents USING GIN (name gin_trgm_ops);
@@ -316,6 +320,8 @@ func (db *postgresDatabase) setupDatabase() error {
 			size        BIGINT NOT NULL,
 			path        TEXT NOT NULL
 		);
+
+		CREATE INDEX IF NOT EXISTS idx_files_torrent_id ON ` + db.schema + `.files (torrent_id);
 
 		CREATE TABLE IF NOT EXISTS ` + db.schema + `.migrations (
 		    schema_version		SMALLINT NOT NULL UNIQUE 
