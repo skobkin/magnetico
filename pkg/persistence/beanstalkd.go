@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var beanstalkdWriteOnlyError = errors.New("This dummy storage engine (\"beanstalkd\") is write-only")
-
 func makeBeanstalkDatabase(url_ *url.URL) (Database, error) {
 	s := new(beanstalkd)
 
@@ -41,11 +39,13 @@ func makeBeanstalkDatabase(url_ *url.URL) (Database, error) {
 }
 
 type beanstalkd struct {
+	WriteOnlyDatabase
 	bsQueue *gobeanstalk.Conn
 }
 
 func (s *beanstalkd) Engine() databaseEngine {
-	return Beanstalkd
+	s.kind = Beanstalkd
+	return s.kind
 }
 
 func (s *beanstalkd) DoesTorrentExist(infoHash []byte) (bool, error) {
@@ -79,32 +79,4 @@ func (s *beanstalkd) AddNewTorrent(infoHash []byte, name string, files []File) e
 func (s *beanstalkd) Close() error {
 	s.bsQueue.Quit()
 	return nil
-}
-
-func (s *beanstalkd) GetNumberOfTorrents() (uint, error) {
-	return 0, beanstalkdWriteOnlyError
-}
-
-func (s *beanstalkd) QueryTorrents(
-	query string,
-	epoch int64,
-	orderBy OrderingCriteria,
-	ascending bool,
-	limit uint,
-	lastOrderedValue *float64,
-	lastID *uint64,
-) ([]TorrentMetadata, error) {
-	return nil, beanstalkdWriteOnlyError
-}
-
-func (s *beanstalkd) GetTorrent(infoHash []byte) (*TorrentMetadata, error) {
-	return nil, beanstalkdWriteOnlyError
-}
-
-func (s *beanstalkd) GetFiles(infoHash []byte) ([]File, error) {
-	return nil, beanstalkdWriteOnlyError
-}
-
-func (s *beanstalkd) GetStatistics(from string, n uint) (*Statistics, error) {
-	return nil, beanstalkdWriteOnlyError
 }
